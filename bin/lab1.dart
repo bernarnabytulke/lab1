@@ -82,3 +82,37 @@ ParseResult parseLine(String line) {
 }
 
 String formatDate(DateTime d) => d.toIso8601String().substring(0, 10);
+
+/// Перевіряє діапазони значень і повертає перелік порушень.
+List<String> validate(Reading r, {DateTime? now}) {
+  final today = now ?? DateTime.now();
+  return [
+    if (!meterPattern.hasMatch(r.meter))
+      'Номер лічильника "${r.meter}" не відповідає формату',
+    if (r.date.year < 2000 || r.date.isAfter(today))
+      'Дата ${formatDate(r.date)} поза допустимим діапазоном',
+    if (r.previous < 0) 'Попереднє значення ${r.previous} від’ємне',
+    if (r.current < r.previous)
+      'Поточне (${r.current}) менше за попереднє (${r.previous})',
+    if (r.tariff <= 0) 'Тариф ${r.tariff} має бути додатним',
+  ];
+}
+
+/// Спожито за період.
+double consumption(Reading r) => r.current - r.previous;
+
+/// Вартість = спожито × тариф.
+double cost(Reading r) => consumption(r) * r.tariff;
+
+/// Загальна вартість (fold).
+double totalCost(List<Reading> items) =>
+    items.fold(0.0, (sum, r) => sum + cost(r));
+
+/// Групує показання за типом послуги.
+Map<String, List<Reading>> groupByService(List<Reading> items) {
+  final result = <String, List<Reading>>{};
+  for (final r in items) {
+    result.putIfAbsent(r.service, () => []).add(r);
+  }
+  return result;
+}
