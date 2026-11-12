@@ -171,3 +171,77 @@ String maskMeter(String meter) => meter.replaceAllMapped(
       _maskPattern,
       (m) => '${(m as RegExpMatch).namedGroup('head')}****',
     );
+
+void main() {
+  final counter = makeCounter();
+  final readings = <Reading>[];
+  final errors = <String>[];
+
+  // 1. Розбір + валідація
+  for (final (i, line) in rawData.indexed) {
+    counter();
+    final result = parseLine(line);
+    final reading = result.reading;
+    if (reading == null) {
+      errors.add('Рядок ${i + 1}: ${result.error}');
+      continue;
+    }
+    final violations = validate(reading);
+    if (violations.isNotEmpty) {
+      errors.add('Рядок ${i + 1}: ${violations.join('; ')}');
+      continue;
+    }
+    readings.add(reading);
+  }
+  print('Оброблено рядків: ${counter() - 1}, коректних: ${readings.length}');
+  print('Помилки:');
+  errors.forEach(print);
+
+  // 2. Конвеєри where → map → fold
+  final heavy = readings.where(consumptionAbove(50)).toList();
+  final costs = heavy.map((r) => '${r.service} ${formatDate(r.date)}').toList();
+  final total = totalCost(readings);
+  final maxConsumption = readings.fold<Reading?>(
+    null,
+    (m, r) => m == null || consumption(r) > consumption(m) ? r : m,
+  );
+  print('\nСпоживання понад 50: ${costs.join(', ')}');
+  print('Загальна вартість: ${total.toStringAsFixed(2)} грн');
+  print(
+    'Середня вартість показання: '
+    '${(total / readings.length).toStringAsFixed(2)} грн',
+  );
+  print(
+    'Найбільше спожито: ${maxConsumption?.service} '
+    '(${consumption(maxConsumption!).toStringAsFixed(1)})',
+  );
+
+  // 3. firstOrNull замість firstWhere без orElse
+  final firstGas = readings.where((r) => r.service == 'Газ').firstOrNull;
+  print('Перше показання газу: ${firstGas == null ? 'немає' : formatDate(firstGas.date)}');
+
+  // 4. Групування
+  final groups = groupByService(readings);
+  final totals = groups.map((s, list) => MapEntry(s, totalCost(list)));
+  print('\nВартість за послугами:');
+  totals.forEach((s, sum) => print('  $s: ${sum.toStringAsFixed(2)} грн'));
+
+  // 5. Сортування за двома критеріями
+  final byDate = sortReadings(readings, by: 'date', ascending: true);
+  print('\nНайраніше показання: ${formatDate(byDate.first.date)}');
+  print(buildReport(readings));
+  print(buildReport(readings, topCount: 3, ascending: true, separator: ' ; '));
+
+  // 6. Регулярні вирази
+  final parts = meterPattern.firstMatch(readings.first.meter);
+  print('Тип: ${parts?.namedGroup('kind')}, номер: ${parts?.namedGroup('number')}');
+  print('Маска: ${maskMeter(readings.first.meter)}');
+
+  // 7. Арифметика дат
+  final now = DateTime.now();
+  for (final r in readings.take(3)) {
+    print('${r.service}: показанню ${now.difference(r.date).inDays} дн.');
+  }
+  final span = byDate.last.date.difference(byDate.first.date);
+  print('Період спостережень: ${span.inDays} дн.');
+}
