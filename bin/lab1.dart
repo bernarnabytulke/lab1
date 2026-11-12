@@ -116,3 +116,58 @@ Map<String, List<Reading>> groupByService(List<Reading> items) {
   }
   return result;
 }
+
+/// Сортує за критерієм [by] ('cost' або 'date'); напрям — [ascending].
+List<Reading> sortReadings(
+  List<Reading> items, {
+  String by = 'cost',
+  bool ascending = false,
+}) {
+  final int Function(Reading, Reading) compare = switch (by) {
+    'cost' => (a, b) => cost(a).compareTo(cost(b)),
+    'date' => (a, b) => a.date.compareTo(b.date),
+    _ => throw ArgumentError.value(by, 'by', 'Допустимо: cost, date'),
+  };
+  final sorted = [...items];
+  sorted.sort(ascending ? compare : (a, b) => compare(b, a));
+  return sorted;
+}
+
+/// Формує текстовий звіт за списком [items].
+String buildReport(
+  List<Reading> items, {
+  int topCount = 5,
+  bool ascending = false,
+  String separator = ' | ',
+}) {
+  final buf = StringBuffer()..writeln('=== Топ-$topCount за вартістю ===');
+  final top = sortReadings(items, ascending: ascending).take(topCount);
+  for (final (i, r) in top.indexed) {
+    buf.writeln(
+      [
+        '${i + 1}',
+        formatDate(r.date),
+        r.service,
+        consumption(r).toStringAsFixed(1),
+        cost(r).toStringAsFixed(2),
+      ].join(separator),
+    );
+  }
+  return buf.toString();
+}
+
+/// Замикання №1: захоплює змінну [count] і збільшує її при кожному виклику.
+int Function() makeCounter() {
+  var count = 0;
+  return () => ++count;
+}
+
+/// Замикання №2: фабрика предикатів; захоплює параметр [threshold].
+bool Function(Reading) consumptionAbove(double threshold) =>
+    (reading) => consumption(reading) > threshold;
+
+/// Маскує останні чотири цифри номера лічильника (іменовані групи).
+String maskMeter(String meter) => meter.replaceAllMapped(
+      _maskPattern,
+      (m) => '${(m as RegExpMatch).namedGroup('head')}****',
+    );
